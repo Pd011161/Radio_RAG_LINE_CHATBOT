@@ -1,0 +1,10 @@
+faiss-cpu
+langchain
+langchain-core
+langchain-community
+sentence-transformers
+fastapi
+uvicorn
+requests
+python-dotenv
+openai

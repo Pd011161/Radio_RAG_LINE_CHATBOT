@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.eggs/
+*.pyo
+*.pyd
+.Python
+env/
+.venv/
+venv/
+ENV/
+build/
+dist/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# VSCode
+.vscode/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# dotenv
+.env
+
+# Database/model artifacts (optional: ถ้าไม่อยาก track ไฟล์ใหญ่ใน database/)
+database/*.pkl
+database/*.index
+
+# Data artifacts (optional: ถ้าไม่อยาก track text/data ที่เป็น raw)
+data/*.txt
+
+# Test outputs
+test/__pycache__/
+test/*.pyc
+
+# Docker
+*.log
+
+# PyCharm
+.idea/
