@@ -38,7 +38,7 @@ Integrates with the LINE Messaging API via webhook and is built using FastAPI (P
 ### 1. Clone & Install
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/Pd011161/Radio_RAG_LINE_CHATBOT.git
 cd RAG
 ```
 
