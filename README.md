@@ -2,6 +2,8 @@
 
 > **Nong Nuclear 🤖☢️**  
 > Thai/English RAG chatbot for nuclear medicine, integrated with LINE, powered by FastAPI, Chroma, LangChain, OpenAI, and DuckDuckGo Web Search.
+> The domain knowledge used in this chatbot is **specific to Nuclear Medicine workflows and practices at Maharat Nakhon Ratchasima Hospital, Thailand**.  
+> Answers to technical queries are based on real clinical guidelines, protocols, and common questions encountered in this setting.
 
 ---
 
@@ -114,6 +116,7 @@ Radio_RAG_LINE_CHATBOT/
 - Uses Chroma as the vector database
 - DuckDuckGo web search for fallback answers
 - FastAPI + Chroma + LangChain + OpenAI + LINE Messaging
+- **Knowledge base is tailored for Nuclear Medicine practice at Maharat Nakhon Ratchasima Hospital, Thailand**
 - Deploy locally or with Docker in minutes
 
 
