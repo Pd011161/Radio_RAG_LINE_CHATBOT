@@ -1,35 +1,42 @@
-# 🚀 RAG Nuclear Medicine Chatbot (LINE RAG Bot)
+# 🚀 Nuclear Medicine RAG Chatbot(LINE)
 
-An AI-based Retrieval-Augmented Generation (RAG) chatbot for answering nuclear medicine questions in Thai (and English), integrated with LINE messaging, powered by FastAPI, FAISS, and OpenAI/LangChain.
+# 🚀 Radio_RAG_LINE_CHATBOT
 
----
-
-## 📚 Project Description
-
-“Nong Nuclear 🤖☢️” is a LINE chatbot designed to answer and assist with nuclear medicine questions.  
-It uses Retrieval-Augmented Generation (RAG): retrieves context from a document knowledge base via FAISS + Embeddings and generates answers with an LLM.  
-Integrates with the LINE Messaging API via webhook and is built using FastAPI (Python).
+> **Nong Nuclear 🤖☢️**  
+> Thai/English RAG chatbot for nuclear medicine, integrated with LINE, powered by FastAPI, Chroma, LangChain, OpenAI, and DuckDuckGo Web Search.
 
 ---
 
-## ✨ Features
+## 📚 Overview
 
-- Thai and English language support
-- Answers technical questions only from the knowledge base (if no answer found: replies politely with "No information available")
-- Can handle small talk and general greetings
-- LINE Bot integration (via webhook, push message to users)
-- Returns answers in JSON format (easy for further integration)
+**Radio_RAG_LINE_CHATBOT** is a bilingual (Thai/English) chatbot for nuclear medicine Q&A on LINE.  
+It uses Retrieval-Augmented Generation (RAG) with a Chroma vector database for knowledge retrieval and an LLM (OpenAI GPT-4o or HuggingFace) for answer generation.  
+If no answer is found, it can **fallback to DuckDuckGo web search** for up-to-date information.  
+Handles both technical queries and small talk, with full LINE integration and context-aware chat history.
+
+---
+
+## ✨ Key Features
+
+- **Bilingual Support:** Thai & English
+- **RAG Pipeline:** Retrieves document context from Chroma + generates answers with LLM
+- **DuckDuckGo Web Search:** Fallback to web search for missing or out-of-knowledge questions
+- **LINE Messaging API:** Seamless LINE chat integration (webhook/push)
+- **Chat History:** Context-aware answers using recent chat turns
+- **Small Talk & Technical QA:** Friendly chit-chat or advanced nuclear medicine queries
+- **JSON Output:** Answers in easy-to-integrate JSON format
 
 ---
 
 ## 🛠️ Tech Stack
 
 - **Backend:** Python, FastAPI, Uvicorn
-- **NLP:** sentence-transformers, LangChain, OpenAI GPT-4o (or gpt-4o-mini)
-- **Vector DB:** FAISS
-- **LINE Messaging API**
-- **Ngrok:** for temporary public webhook access
-- **Docker:** for easy deployment
+- **NLP/RAG:** LangChain, sentence-transformers, OpenAI GPT-4o (or gpt-4o-mini)
+- **Vector DB:** Chroma
+- **Web Search:** DuckDuckGo API (via LangChain tool)
+- **Messaging:** LINE Messaging API
+- **Deployment:** Docker, Ngrok (for development)
+- **Config:** .env (environment variables)
 
 ---
 
@@ -68,49 +75,45 @@ docker run -p 8000:8000 --env-file .env radio-rag-line-bot
 ## 🧩 Project Structure
 
 ```bash
-RAG/
-├── app/
-│   └── api.py
-├── data/
-│   └── hotlab-v1.txt
-├── database/
-│   ├── id2meta.pkl
-│   ├── id2text.pkl
-│   └── index.index
-├── test/
-│   └── prepare-rag.ipynb
-├── .env
-├── .gitignore
+Radio_RAG_LINE_CHATBOT/
+├── app/                # FastAPI backend and core logic
+├── data/               # Knowledge base text files
+├── database/           # Chroma persistent data (vector index, metadata, etc.)
+├── test/               # Notebooks and testing scripts
+├── requirements.txt / pyproject.toml
 ├── Dockerfile
-├── pyproject.toml
-├── requirements.txt
+├── .env
 ├── README.md
+└── ...
 ```
 
 ---
 
 ## 🧑‍💻 Example Usage
 
-- Users send messages to the LINE Bot
-- The bot responds with referenced information from the knowledge base (if not found, replies “No information available, sorry 🙏🏻😭”)
-- You can use the public ngrok URL as a webhook for LINE
+- Users chat with the LINE Bot as usual
+- The bot tries to answer using the Chroma knowledge base (RAG)
+- If no relevant info is found, it automatically searches DuckDuckGo and answers from web content
+- Chat history is used for more natural conversations
 
 ---
 
 ## 📝 Notes
 
-- Do not commit .env, .pkl files, or other secrets to Git
-- Check .gitignore for ignored files/folders (recommended: ignore large database/data artifacts)
-- Example embedding model: intfloat/multilingual-e5-base
-- To add more documents, update the FAISS index
+- Do NOT commit: .env, large Chroma DB folders, or secret files to git
+- To add new documents: Rebuild or update the Chroma vector database
+- Embeddings: Uses intfloat/multilingual-e5-base (or other supported models)
+- Docker recommended: for consistency and easy deployment
 
 ---
 
 ## ⚡ Quick Summary
 
-- Python RAG chatbot with FAISS + LangChain + LINE Webhook
-- Great for nuclear medicine domain QA
-- Deployable both locally and with Docker
+- RAG chatbot for nuclear medicine Q&A (Thai & English)
+- Uses Chroma as the vector database
+- DuckDuckGo web search for fallback answers
+- FastAPI + Chroma + LangChain + OpenAI + LINE Messaging
+- Deploy locally or with Docker in minutes
 
 
 
