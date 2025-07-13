@@ -1,81 +1,23 @@
 from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.responses import JSONResponse
 import uvicorn
-import hmac, hashlib, os, json, requests, pickle, faiss
-import numpy as np
+import os, json
 from dotenv import load_dotenv
+from .radio_rag import *
+from .detect_question_type import *
+# from .agent_tool import *
+from .util import *
+from .chitchat import chitcat_chat
+from .detect_search_web import *
+from .detect_retriver import *
+from .web_search import *
+
 load_dotenv()
 
-# ============ ENV ============
-LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
-LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
-openapi_key = os.getenv("OPENAI_API_KEY")
-
-# ============ LOAD DB ============
-index = faiss.read_index("database/index.index")
-with open("database/id2text.pkl", "rb") as f:
-    id2text = pickle.load(f)
-with open("database/id2meta.pkl", "rb") as f:
-    id2meta = pickle.load(f)
-
-# ============ EMBEDDER ============
-from sentence_transformers import SentenceTransformer
-embedder = SentenceTransformer("intfloat/multilingual-e5-base")
-
-# ============ LangChain ============
-from langchain.chat_models import ChatOpenAI
-from langchain_core.prompts import PromptTemplate
-from langchain_core.output_parsers import JsonOutputParser
-
-parser = JsonOutputParser()
-
-prompt_template = PromptTemplate.from_template(
-    """หนูชื่อ 'น้องนิวเคลียร์ 🤖☢️' หนูเป็นผู้ช่วยให้คำปรึกษาด้านเวชศาสตร์นิวเคลียร์ งานของหนูคือการคำถามด้านเวชศาสตร์นิวเคลียร์จากคำถามโดยใช้ข้อมูลอ้างอิง
-
-[ข้อมูลอ้างอิง]
-{context}
-
-[คำถามผู้ใช้]
-{question}
-
-[แนวทางการตอบกลับ]
-- ให้หนูตอบโดยอ้างอิงข้อมูลจาก [ข้อมูลอ้างอิง] เท่านั้น และขอสรุปหรืออธิบายให้ครบถ้วน ชัดเจน น่ารัก และสุภาพ
-- หากคำถามเป็นคำถามเชิงเทคนิคที่ไม่มีคำตอบใน [ข้อมูลอ้างอิง] ให้หนูตอบว่า "ไม่มีข้อมูลในส่วนนี้ค่ะ ขอโทษด้วยนะคะ🙏🏻😭"
-- แต่ถ้าคำถามเป็นลักษณะทั่วไป(คำถามสารทุกข์สุกดิบ) (เช่น ทักทาย ขอบคุณ พูดคุยเล่นฝฝ) ที่ไม่ใช่ข้อมูลเชิงเทคนิคหรือความรู้เฉพาะ หนูสามารถตอบได้อย่างสุภาพและน่ารัก
-- หนูจะไม่ใช้ข้อมูลอื่นนอกเหนือจาก [ข้อมูลอ้างอิง] ในการตอบ ยกเว้นกรณีเป็นคำถามทั่วไปตามที่ระบุไว้ข้างต้น
-- ขอให้แทนตัวเองว่า "หนู" ทุกครั้งในการตอบ และรูปแบบการตอบให้น่ารักและเป็นมิตร สุภาพลงท้ายด้วย 'นะคะ' หรือ ค่ะ' และใ้ช้ emoji เพื่อเพิ่มความเป็นมิตรได้
-
-[รูปแบบการตอบกลับ]
-ตอบกลับในรูปแบบ JSON เท่านั้น:
-{{
-  "answer": "คำตอบของหนูที่นี่"
-}}
-
-**หมายเหตุ:** กรุณาตอบเป็น JSON เท่านั้น ห้ามมีข้อความอื่นเพิ่มเติมนอกเหนือจากนี้ค่ะ
-"""
-)
-
-
-llm = ChatOpenAI(
-    model_name="gpt-4o-mini",
-    temperature=0.0,
-    max_tokens=512,
-    openai_api_key=openapi_key
-)
-
-chain = prompt_template | llm | parser
-
-def rag_pipeline(user_query: str, embedder, index, id2text, top_k=3):
-    query_embed = embedder.encode([user_query])
-    D, I = index.search(np.array(query_embed, dtype=np.float32), top_k)
-    top_chunks = [id2text[i] for i in I[0]]
-    context = "\n\n".join(top_chunks)
-    inputs = {"context": context, "question": user_query}
-    result = chain.invoke(inputs)
-    return result["answer"], context, top_chunks
-
-# ============ FASTAPI ============
 app = FastAPI()
+
+SESSION = {}
+CHAT_HISTORY = {} 
 
 @app.post("/webhook")
 async def line_webhook(request: Request, background_tasks: BackgroundTasks):
@@ -86,45 +28,277 @@ async def line_webhook(request: Request, background_tasks: BackgroundTasks):
         if event["type"] == "message" and event["message"]["type"] == "text":
             user_query = event["message"]["text"]
             user_id = event["source"]["userId"]
-            # ทำใน background เพื่อไม่ timeout!
             background_tasks.add_task(handle_user_message, user_query, user_id)
     return JSONResponse(content={"status": "ok"})
 
 
+def add_message_to_history(user_id, role, text):
+    if user_id not in CHAT_HISTORY:
+        CHAT_HISTORY[user_id] = []
+    CHAT_HISTORY[user_id].append({"role": role, "text": text})
+    print("CHAT_HISTORY:", CHAT_HISTORY)
 
+def get_history(user_id, limit=10):
+    """คืน history ย้อนหลัง limit รายการ"""
+    return CHAT_HISTORY.get(user_id, [])[-limit:]
+
+def send_and_save(user_id, answer):
+    send_line_message(user_id, answer)
+    add_message_to_history(user_id, "assistant", answer)
+
+# HAVE CHAT HISTORY 
 def handle_user_message(user_query, user_id):
     try:
-        # 1. ส่ง effect ก่อน (แจ้ง user ว่ารอก่อนนะ)
-        send_line_message(user_id, 'รอก่อนนะคะ🥺 หนูขอเวลาคิดแป๊บนึง... 🧠💭⏳')
+        add_message_to_history(user_id, "user", user_query)
+        # ===== 2. Detect language and question type =====
+        lang = detect_lang(user_query)
+        print('lang:', lang)
+        qt = detect_qt_pipeline(user_query, lang)
+        print('qt:', qt)
         
-        # 2. ประมวลผลจริง
-        answer, context, chunks = rag_pipeline(user_query, embedder, index, id2text)
-        
-        # 3. ส่งคำตอบจริงอีกที
-        send_line_message(user_id, answer)
+        # ===== 1. Handle web search session (เฉพาะ neu_med_thech_qt เท่านั้น) =====
+        if SESSION.get(user_id, {}).get("waiting_for_websearch_answer"):
+            # ถ้า last_qt ไม่ใช่ neu_med_thech_qt ให้ข้าม websearch ทันที
+            if SESSION[user_id].get("last_qt") != "neu_med_thech_qt":
+                # send_line_message(user_id, "ขอโทษค่ะ หนูค้นจากอินเทอร์เน็ตได้เฉพาะคำถามด้านเวชศาสตร์นิวเคลียร์นะคะ 🥲🙏🏻")
+                send_and_save(user_id, "ขอโทษค่ะ หนูค้นจากอินเทอร์เน็ตได้เฉพาะคำถามด้านเวชศาสตร์นิวเคลียร์นะคะ 🥲🙏🏻")
+                del SESSION[user_id]
+                return
+
+            search = classify_search_intent(user_query, llm)
+            print('search:', search)
+            if search == "YES":
+                last_query = SESSION[user_id]["last_query"]
+                answer = search_web_rag(last_query, llm)
+                del SESSION[user_id]
+                # send_line_message(user_id, answer)
+                send_and_save(user_id, answer)
+            else:
+                # send_line_message(user_id, "งั้นไว้คราวหน้านะคะ 😊")
+                send_and_save(user_id, "งั้นไว้คราวหน้านะคะ 😊")
+                del SESSION[user_id]
+            return
+
+        # ===== 3. Nuclear Medicine Technical Question → RAG Agent =====
+        if qt == 'neu_med_thech_qt':
+            if lang == 'th':
+                # send_line_message(user_id, 'รอก่อนนะคะ🥺 หนูขอเวลาคิดแป๊บนึง... 🧠💭⏳')
+                send_and_save(user_id, 'รอก่อนนะคะ🥺 หนูขอเวลาคิดแป๊บนึง... 🧠💭⏳')
+            elif lang == 'en':
+                # send_line_message(user_id, 'Please hold on 🥺 I need a moment to think... 🧠💭⏳')
+                send_and_save(user_id, 'Please hold on 🥺 I need a moment to think... 🧠💭⏳')
+
+            # ===== 4. Detect if user directly requests web search =====
+            search = classify_search_intent(user_query, llm)
+            print('search:', search)
+            if search == "YES":
+                answer = search_web_rag(user_query, llm)
+                # send_line_message(user_id, answer)
+                send_and_save(user_id, answer)
+                return
+
+            # ===== 5. Select Retriever =====
+            history = get_history(user_id, limit=5)
+            print('Use-history:', history)
+            retriver = detect_retriver(user_query)
+            print('Retriver:', retriver)
+            if retriver == "HOTLAB":
+                answer = rag_hotlab(user_query, history=history)
+            elif retriver == "PROTOCOL":
+                answer = rag_protocol(user_query, history=history)
+            elif retriver == "BMD":
+                answer = rag_bmd(user_query, history=history)
+            elif retriver == "IODINE":
+                answer = rag_iodine(user_query, history=history)
+            else:
+                answer = "ไม่มีข้อมูลในส่วนนี้ค่ะ ขอโทษด้วยนะคะ🙏🏻😭"
+            print('RAG-answer:', answer)
+
+            # ===== 6. Not found in RAG → Ask for web search =====
+            if any(kw in answer for kw in ["ไม่มีข้อมูล", "Sorry", "don't have information", "ขอโทษ"]):
+                SESSION[user_id] = {
+                    "waiting_for_websearch_answer": True,
+                    "last_query": user_query,
+                    "last_qt": qt
+                }
+                followup = (
+                    "หนูไม่มีข้อมูลในคลัง 😢\n🌐 ให้หนูลองค้นจากอินเทอร์เน็ตไหมคะ?"
+                    if lang == 'th' else
+                    "I don't have the info 😢\n🌐 Would you like me to search the internet?"
+                )
+                # send_line_message(user_id, followup)
+                send_and_save(user_id, followup)
+            else:
+                # send_line_message(user_id, answer)
+                send_and_save(user_id, answer)
+
+        # ===== 4. Chitchat =====
+        elif qt == 'chitchat_qt':
+            history = get_history(user_id, limit=5) 
+            print('Use-history:', history)
+            answer = chitcat_chat(user_query, history)
+            # send_line_message(user_id, answer)
+            send_and_save(user_id, answer)
+
+        # ===== 5. Other Technical (not nuclear medicine) =====
+        elif qt == 'other_thech_qt':
+            if lang == 'th':
+                # send_line_message(
+                #     user_id,
+                #     "ไม่สามารถตอบได้ค่ะ เนื่องจากเกินขอบเขตความรับผิดชอบของหนู เพราะคุณถามคำถามที่ไม่เกี่ยวข้องกับเวชศาสตร์นิวเคลียร์ค่ะ หนูขอโทษนะคะ🙏🏻😭 หากมีคำถามเพิ่มเติมเกี่ยวกับการตรวจหรือสารเภสัชรังสี สามารถถามหนูได้เลยนะคะ 🤗"
+                # )
+                send_and_save(
+                    user_id,
+                    "ไม่สามารถตอบได้ค่ะ เนื่องจากเกินขอบเขตความรับผิดชอบของหนู เพราะคุณถามคำถามที่ไม่เกี่ยวข้องกับเวชศาสตร์นิวเคลียร์ค่ะ หนูขอโทษนะคะ🙏🏻😭 หากมีคำถามเพิ่มเติมเกี่ยวกับการตรวจหรือสารเภสัชรังสี สามารถถามหนูได้เลยนะคะ 🤗"
+                )
+            elif lang == 'en':
+                # send_line_message(
+                #     user_id,
+                #     "I’m sorry, I cannot answer this question as it is beyond my area of responsibility. Your question is not related to Nuclear Medicine. 🙏🏻😭 If you have any questions about nuclear medicine procedures or radiopharmaceuticals, feel free to ask me anytime! 🤗"
+                # )
+                send_and_save(
+                    user_id,
+                    "I’m sorry, I cannot answer this question as it is beyond my area of responsibility. Your question is not related to Nuclear Medicine. 🙏🏻😭 If you have any questions about nuclear medicine procedures or radiopharmaceuticals, feel free to ask me anytime! 🤗"
+                )
+            # *** ไม่มี SESSION websearch สำหรับ qt นี้ ***
+
+        # ===== 6. Other/Error =====
+        else:
+            # send_line_message(user_id, "เกิดข้อผิดพลาด กรุณาลองใหม่🙏🏻" if lang == 'th'
+            #                   else "Oops! Something went wrong. Please try again. 🙏🏻")
+            send_and_save(user_id, "เกิดข้อผิดพลาด กรุณาลองใหม่🙏🏻" if lang == 'th'
+                              else "Oops! Something went wrong. Please try again. 🙏🏻")
     except Exception as e:
         print("ERROR:", e)
-        send_line_message(user_id, "เกิดข้อผิดพลาด กรุณาลองใหม่")
+        try:
+            if lang == 'th':
+                # send_line_message(user_id, "เกิดข้อผิดพลาด กรุณาลองใหม่🙏🏻")
+                send_and_save(user_id, "เกิดข้อผิดพลาด กรุณาลองใหม่🙏🏻")
+            elif lang == 'en':
+                # send_line_message(user_id, "Oops! Something went wrong. Please try again. 🙏🏻")
+                send_and_save(user_id, "Oops! Something went wrong. Please try again. 🙏🏻")
+            else:
+                # send_line_message(user_id, "เกิดข้อผิดพลาด กรุณาลองใหม่🙏🏻")
+                send_and_save(user_id, "เกิดข้อผิดพลาด กรุณาลองใหม่🙏🏻")
+
+        except Exception:
+            pass
+
+# NO CHAT HISTORY 
+# def handle_user_message(user_query, user_id):
+#     try:
+#         # ===== 2. Detect language and question type =====
+#         lang = detect_lang(user_query)
+#         print('lang:', lang)
+#         qt = detect_qt_pipeline(user_query, lang)
+#         print('qt:', qt)
+        
+#         # ===== 1. Handle web search session (เฉพาะ neu_med_thech_qt เท่านั้น) =====
+#         if SESSION.get(user_id, {}).get("waiting_for_websearch_answer"):
+#             # ถ้า last_qt ไม่ใช่ neu_med_thech_qt ให้ข้าม websearch ทันที
+#             if SESSION[user_id].get("last_qt") != "neu_med_thech_qt":
+#                 send_line_message(user_id, "ขอโทษค่ะ หนูค้นจากอินเทอร์เน็ตได้เฉพาะคำถามด้านเวชศาสตร์นิวเคลียร์นะคะ 🥲🙏🏻")
+#                 del SESSION[user_id]
+#                 return
+
+#             search = classify_search_intent(user_query, llm)
+#             print('search:', search)
+#             if search == "YES":
+#                 last_query = SESSION[user_id]["last_query"]
+#                 answer = search_web_rag(last_query, llm)
+#                 del SESSION[user_id]
+#                 send_line_message(user_id, answer)
+#             else:
+#                 send_line_message(user_id, "งั้นไว้คราวหน้านะคะ 😊")
+#                 del SESSION[user_id]
+#             return
+
+#         # ===== 3. Nuclear Medicine Technical Question → RAG Agent =====
+#         if qt == 'neu_med_thech_qt':
+#             if lang == 'th':
+#                 send_line_message(user_id, 'รอก่อนนะคะ🥺 หนูขอเวลาคิดแป๊บนึง... 🧠💭⏳')
+#             elif lang == 'en':
+#                 send_line_message(user_id, 'Please hold on 🥺 I need a moment to think... 🧠💭⏳')
+
+#             # ===== 4. Detect if user directly requests web search =====
+#             search = classify_search_intent(user_query, llm)
+#             print('search:', search)
+#             if search == "YES":
+#                 answer = search_web_rag(user_query, llm)
+#                 send_line_message(user_id, answer)
+#                 return
+
+#             # ===== 5. Select Retriever =====
+#             retriver = detect_retriver(user_query)
+#             print('Retriver:', retriver)
+#             if retriver == "HOTLAB":
+#                 answer = rag_hotlab(user_query)
+#             elif retriver == "PROTOCOL":
+#                 answer = rag_protocol(user_query)
+#             elif retriver == "BMD":
+#                 answer = rag_bmd(user_query)
+#             elif retriver == "IODINE":
+#                 answer = rag_iodine(user_query)
+#             else:
+#                 answer = "ไม่มีข้อมูลในส่วนนี้ค่ะ ขอโทษด้วยนะคะ🙏🏻😭"
+#             print('RAG-answer:', answer)
+
+#             # ===== 6. Not found in RAG → Ask for web search =====
+#             if any(kw in answer for kw in ["ไม่มีข้อมูล", "Sorry", "don't have information", "ขอโทษ"]):
+#                 SESSION[user_id] = {
+#                     "waiting_for_websearch_answer": True,
+#                     "last_query": user_query,
+#                     "last_qt": qt
+#                 }
+#                 followup = (
+#                     "หนูไม่มีข้อมูลในคลัง 😢\n🌐 ให้หนูลองค้นจากอินเทอร์เน็ตไหมคะ?"
+#                     if lang == 'th' else
+#                     "I don't have the info 😢\n🌐 Would you like me to search the internet?"
+#                 )
+#                 send_line_message(user_id, followup)
+#             else:
+#                 send_line_message(user_id, answer)
+
+#         # ===== 4. Chitchat =====
+#         elif qt == 'chitchat_qt':
+#             answer = chitcat_chat(user_query)
+#             send_line_message(user_id, answer)
+
+#         # ===== 5. Other Technical (not nuclear medicine) =====
+#         elif qt == 'other_thech_qt':
+#             if lang == 'th':
+#                 send_line_message(
+#                     user_id,
+#                     "ไม่สามารถตอบได้ค่ะ เนื่องจากเกินขอบเขตความรับผิดชอบของหนู เพราะคุณถามคำถามที่ไม่เกี่ยวข้องกับเวชศาสตร์นิวเคลียร์ค่ะ หนูขอโทษนะคะ🙏🏻😭 หากมีคำถามเพิ่มเติมเกี่ยวกับการตรวจหรือสารเภสัชรังสี สามารถถามหนูได้เลยนะคะ 🤗"
+#                 )
+#             elif lang == 'en':
+#                 send_line_message(
+#                     user_id,
+#                     "I’m sorry, I cannot answer this question as it is beyond my area of responsibility. Your question is not related to Nuclear Medicine. 🙏🏻😭 If you have any questions about nuclear medicine procedures or radiopharmaceuticals, feel free to ask me anytime! 🤗"
+#                 )
+#             # *** ไม่มี SESSION websearch สำหรับ qt นี้ ***
+
+#         # ===== 6. Other/Error =====
+#         else:
+#             send_line_message(user_id, "เกิดข้อผิดพลาด กรุณาลองใหม่🙏🏻" if lang == 'th'
+#                               else "Oops! Something went wrong. Please try again. 🙏🏻")
+
+#     except Exception as e:
+#         print("ERROR:", e)
+#         try:
+#             if lang == 'th':
+#                 send_line_message(user_id, "เกิดข้อผิดพลาด กรุณาลองใหม่🙏🏻")
+#             elif lang == 'en':
+#                 send_line_message(user_id, "Oops! Something went wrong. Please try again. 🙏🏻")
+#             else:
+#                 send_line_message(user_id, "เกิดข้อผิดพลาด กรุณาลองใหม่🙏🏻")
+#         except Exception:
+#             pass
 
 
-def send_line_message(user_id, text):
-    url = "https://api.line.me/v2/bot/message/push"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}",
-    }
-    data = {
-        "to": user_id,
-        "messages": [{"type": "text", "text": text}],
-    }
-    resp = requests.post(url, headers=headers, json=data)
-    print("LINE response:", resp.status_code, resp.text)
-
-# สำหรับเทส GET (optional)
 @app.get("/webhook")
 async def check_webhook():
     return {"status": "webhook is alive"}
 
-# ============ START ============
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

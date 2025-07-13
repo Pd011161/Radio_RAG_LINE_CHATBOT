@@ -8,3 +8,6 @@ uvicorn
 requests
 python-dotenv
 openai
+# duckduckgo-search
+ddgs
+chromadb
