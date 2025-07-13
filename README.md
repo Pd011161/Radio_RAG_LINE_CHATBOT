@@ -44,7 +44,6 @@ Handles both technical queries and small talk, with full LINE integration and co
 
 ```bash
 git clone https://github.com/Pd011161/Radio_RAG_LINE_CHATBOT.git
-cd RAG
 ```
 
 ### 2. Prepare .env file
