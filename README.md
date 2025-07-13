@@ -43,7 +43,11 @@ Handles both technical queries and small talk, with full LINE integration and co
 ### 1. Clone & Install
 
 ```bash
+# Clone this repository
 git clone https://github.com/Pd011161/Radio_RAG_LINE_CHATBOT.git
+
+# Move into the project directory
+cd Radio_RAG_LINE_CHATBOT
 ```
 
 ### 2. Prepare .env file
