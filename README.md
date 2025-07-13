@@ -1,7 +1,5 @@
 # 🚀 Nuclear Medicine RAG Chatbot(LINE)
 
-# 🚀 Radio_RAG_LINE_CHATBOT
-
 > **Nong Nuclear 🤖☢️**  
 > Thai/English RAG chatbot for nuclear medicine, integrated with LINE, powered by FastAPI, Chroma, LangChain, OpenAI, and DuckDuckGo Web Search.
 
