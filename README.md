@@ -1,4 +1,4 @@
-# ☢️🤖 Nuclear Medicine RAG Chatbot(LINE)
+# Nuclear Medicine RAG Chatbot(LINE)
 
 🎬 Demo Video
 
